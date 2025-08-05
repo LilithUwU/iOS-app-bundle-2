@@ -16,9 +16,9 @@ class MemoryWarningObserver {
 
     init() {
         NotificationCenter.default.addObserver(self,
-                                               selector: #selector(handleMemoryWarning),
-                                               name: UIApplication.didReceiveMemoryWarningNotification,
-                                               object: nil)
+           selector: #selector(handleMemoryWarning),
+           name: UIApplication.didReceiveMemoryWarningNotification,
+           object: nil)
     }
 
     deinit {
@@ -63,7 +63,7 @@ class ViewController: UIViewController, UICollectionViewDataSource {
 
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
-        collectionView.register(UICollectionViewCell.self, forCellWithReuseIdentifier: "ImageCell")
+        collectionView.register(ImageCell.self, forCellWithReuseIdentifier: ImageCell.reuseIdentifier)
         collectionView.dataSource = self
         collectionView.backgroundColor = .clear
 
@@ -121,30 +121,32 @@ class ViewController: UIViewController, UICollectionViewDataSource {
     }
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "ImageCell", for: indexPath)
-        let imageViewTag = 99
-
-        let imageView: UIImageView
-        if let existing = cell.contentView.viewWithTag(imageViewTag) as? UIImageView {
-            imageView = existing
-        } else {
-            imageView = UIImageView()
-            imageView.tag = imageViewTag
-            imageView.contentMode = .scaleAspectFill
-            imageView.clipsToBounds = true
-            imageView.layer.cornerRadius = 10
-            imageView.translatesAutoresizingMaskIntoConstraints = false
-            cell.contentView.addSubview(imageView)
-
-            NSLayoutConstraint.activate([
-                imageView.topAnchor.constraint(equalTo: cell.contentView.topAnchor),
-                imageView.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor),
-                imageView.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor),
-                imageView.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor)
-            ])
+        guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: ImageCell.reuseIdentifier, for: indexPath) as? ImageCell else {
+            fatalError("Could not dequeue ImageCell")
         }
 
-        imageView.image = images[indexPath.item]
+        let url = imageUrls[indexPath.item]
+
+        if let cachedImage = ImageCacheManager.shared.getImage(for: url) {
+            cell.imageView.image = cachedImage
+        } else {
+            cell.imageView.image = UIImage(systemName: "photo")
+
+            ImageDownloader.shared.downloadImage(from: url) { result in
+                DispatchQueue.main.async {
+                    guard let updatedCell = collectionView.cellForItem(at: indexPath) as? ImageCell else { return }
+
+                    switch result {
+                    case .success(let image):
+                        ImageCacheManager.shared.saveImage(image, for: url)
+                        updatedCell.imageView.image = image
+                    case .failure:
+                        updatedCell.imageView.image = UIImage(systemName: "xmark.octagon")
+                    }
+                }
+            }
+        }
+
         return cell
     }
 }
